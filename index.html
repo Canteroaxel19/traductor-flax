@@ -1,0 +1,565 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Traductor Flax - Ultra Pro Max</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://unpkg.com/tesseract.js@v4.0.1/dist/tesseract.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+
+    <style>
+        :root { --bg: #070b14; --card: rgba(30, 41, 59, 0.4); --accent: #3b82f6; }
+        body.theme-neon { --bg: #0d001a; --accent: #ff00ff; }
+        body.theme-gold { --bg: #1a1a00; --accent: #ffd700; }
+        body.theme-emerald { --bg: #001a0d; --accent: #10b981; }
+        body.theme-ruby { --bg: #1a0000; --accent: #ef4444; }
+        body.theme-obsidian { --bg: #000000; --accent: #ffffff; }
+
+        body { background: var(--bg); color: #fff; font-family: 'Inter', sans-serif; transition: 0.5s; overflow-x: hidden; width: 100vw; }
+        .glass-card { background: var(--card); backdrop-filter: blur(15px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 1.5rem; width: 100%; }
+
+        .shimmer-sync { position: relative; overflow: hidden; }
+        .shimmer-sync::after {
+            content: ''; position: absolute; top: -50%; left: -150%; width: 50%; height: 200%;
+            background: rgba(255, 255, 255, 0.3); transform: rotate(30deg);
+            animation: syncShimmer 10s infinite;
+        }
+        @keyframes syncShimmer { 0% { left: -150%; } 10% { left: 150%; } 100% { left: 150%; } }
+
+        #welcome-modal, #star-modal { display: none; position: fixed; inset: 0; z-index: 500; background: rgba(0,0,0,0.95); backdrop-filter: blur(15px); align-items: center; justify-content: center; padding: 20px; }
+        #editor-modal { display: none; position: fixed; inset: 0; z-index: 600; background: #000; flex-direction: column; }
+        .tab-active { border-bottom: 2px solid var(--accent); color: var(--accent); }
+        
+        #scan-loader { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.8); z-index: 50; align-items: center; justify-content: center; border-radius: 1.5rem; flex-direction: column; }
+        .mic-active { color: #ef4444; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        /* Icono Juego 3D Morado Saltando */
+        .game-icon-3d {
+            color: #a855f7;
+            text-shadow: 2px 2px 0px #6b21a8, 4px 4px 0px rgba(0,0,0,0.5);
+            display: inline-block;
+            animation: jump3d 1.5s infinite ease-in-out;
+        }
+        @keyframes jump3d {
+            0%, 100% { transform: translateY(0) scale(1); }
+            50% { transform: translateY(-15px) scale(1.1); }
+        }
+
+        .lang-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-height: 300px; overflow-y: auto; padding-right: 5px; }
+        .lang-btn { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); padding: 10px; border-radius: 12px; font-size: 11px; text-align: left; transition: 0.3s; }
+        .lang-btn.selected { background: var(--accent); border-color: var(--accent); color: white; }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <div id="welcome-modal">
+        <div class="glass-card p-6 w-full max-w-sm text-center space-y-4 border-y-4 border-blue-500">
+            <h2 class="text-3xl font-black italic"><span class="text-white" id="modal-title-left">TRADUCTOR</span> <span class="text-blue-500">FLAX</span></h2>
+            
+            <div id="step1" class="space-y-4">
+                <p class="text-slate-400 font-bold text-[10px] uppercase tracking-widest">Select Language / Selecciona Idioma</p>
+                <div class="lang-grid" id="langGridContainer"></div>
+                <button onclick="goToStep2()" class="w-full py-4 bg-blue-600 rounded-xl font-black uppercase tracking-widest text-xs" id="btnNext">SIGUIENTE</button>
+            </div>
+
+            <div id="step2" class="hidden space-y-4">
+                <p id="welcomeMsg" class="text-slate-300 font-bold text-sm leading-tight"></p>
+                <input type="text" id="userNameInput" class="w-full bg-slate-900/80 p-4 rounded-xl border border-white/10 text-center text-white outline-none focus:border-blue-500" placeholder="">
+                <button onclick="guardarUsuario()" class="w-full py-4 bg-blue-600 rounded-xl font-black uppercase tracking-widest text-xs" id="btnStart">COMENZAR</button>
+            </div>
+        </div>
+    </div>
+
+    <header class="p-4 sticky top-0 z-50 bg-[#070b14]/90 border-b border-white/5">
+        <div class="flex flex-col items-center mb-2">
+            <div class="flex gap-2 text-sm mb-1 shimmer-sync">
+                <span>🇺🇸</span><span>🇪🇸</span><span>🇧🇷</span><span>🇫🇷</span><span>🇩🇪</span><span>🇮🇹</span><span>🇯🇵</span><span>🇰🇷</span>
+            </div>
+            <h1 class="text-2xl font-black italic tracking-tighter shimmer-sync">
+                <span class="text-white" id="ui-title-main">TRADUCTOR</span> <span class="text-blue-500">FLAX</span>
+            </h1>
+        </div>
+        <div class="flex justify-between items-center">
+            <div id="userHeaderName" class="text-[10px] font-bold text-blue-400 uppercase tracking-widest"></div>
+            <select id="themeSelect" onchange="changeTheme()" class="bg-slate-800/80 text-[10px] p-1.5 rounded-lg text-white border border-white/10 outline-none">
+                <option value="classic" id="opt-ocean">🌑 Océano</option>
+                <option value="neon" id="opt-neon">🧬 Neón</option>
+                <option value="gold" id="opt-gold">✨ Oro</option>
+                <option value="emerald" id="opt-emerald">🌿 Verde</option>
+                <option value="ruby" id="opt-ruby">🌹 Rojo</option>
+                <option value="obsidian" id="opt-obsidian">🌑 Negro</option>
+            </select>
+        </div>
+    </header>
+
+    <main class="space-y-5 flex-1 mx-auto p-4 w-full max-w-lg">
+        <div class="glass-card p-5 border-l-4 border-yellow-500">
+            <h4 class="text-[8px] font-black text-yellow-500 uppercase tracking-widest mb-3"><span id="ui-mentality-text">MENTALIDAD</span> <span class="text-white">FLAX</span></h4>
+            <p id="phraseMain" class="text-lg font-bold text-slate-200 italic leading-snug"></p>
+        </div>
+
+        <div class="flex justify-between items-center">
+            <div>
+                <h2 id="userNameDisplay" class="text-3xl font-black"></h2>
+                <p id="ui-discover" class="text-lg font-bold text-blue-500"></p>
+            </div>
+            <a href="https://www.blipzi.com/es/" target="_blank" class="game-icon-3d text-4xl"><i class="fa-solid fa-gamepad"></i></a>
+        </div>
+
+        <div class="space-y-3">
+            <div class="flex items-center gap-2">
+                <select id="l1" onchange="saveLangPref('l1')" class="flex-1 bg-slate-800/50 p-3 rounded-2xl text-[10px] font-bold border border-white/5 text-white outline-none"></select>
+                <button onclick="intercambiarIdiomas()" class="w-10 h-10 bg-blue-600/20 rounded-full text-blue-400"><i class="fa-solid fa-right-left"></i></button>
+                <select id="l2" onchange="saveLangPref('l2')" class="flex-1 bg-slate-800/50 p-3 rounded-2xl text-[10px] font-bold border border-white/5 text-blue-400 outline-none"></select>
+            </div>
+            
+            <div class="glass-card p-5 relative min-h-[140px]">
+                <div id="scan-loader">
+                    <i class="fa-solid fa-circle-notch animate-spin text-3xl text-blue-500"></i>
+                    <span class="text-[10px] font-bold mt-2" id="ui-analyzing">ANALIZANDO...</span>
+                </div>
+                <textarea id="tIn" class="w-full bg-transparent outline-none resize-none text-xl placeholder-slate-600 h-24"></textarea>
+                <div class="flex justify-end gap-5 mt-2 items-center">
+                    <button onclick="borrarTextoTraductor()" class="text-red-500/40 text-xl"><i class="fa-solid fa-trash-can"></i></button>
+                    <button onclick="toggleMicrofono()" id="micBtn" class="text-blue-500 text-3xl transition-all"><i class="fa-solid fa-microphone"></i></button>
+                    <label class="cursor-pointer text-blue-500 text-4xl">
+                        <i class="fa-solid fa-image"></i>
+                        <input type="file" id="fileIn" accept="image/*" class="hidden">
+                    </label>
+                </div>
+            </div>
+            
+            <button onclick="traducir()" id="btn-translate-main" class="shimmer-sync w-full py-4 bg-blue-700 rounded-2xl font-black uppercase text-xs shadow-lg"></button>
+            
+            <div class="flex gap-2">
+                <button onclick="abrirTraductorWeb()" id="ui-web-trans" class="flex-1 py-3 bg-slate-800/50 border border-white/10 rounded-2xl font-black uppercase text-[9px] text-blue-400 flex items-center justify-center gap-2 italic"></button>
+                <button onclick="abrirEscrituraEstrella()" class="w-14 bg-slate-800/50 border border-white/10 rounded-2xl flex items-center justify-center text-yellow-500 text-lg">
+                    <i id="mainStarIcon" class="fa-solid fa-star"></i>
+                </button>
+            </div>
+
+            <div id="resultBox" class="glass-card p-5 border-l-4 border-blue-500">
+                <div id="tOut" class="text-xl font-bold break-words">...</div>
+                <div class="flex gap-5 mt-4 justify-end items-center">
+                    <button onclick="hablarTextoTraductor()" class="text-blue-400 text-2xl"><i class="fa-solid fa-volume-high"></i></button>
+                    <button onclick="guardarFavoritoRes()" class="text-slate-500 text-xl"><i id="resStarIcon" class="fa-solid fa-star"></i></button>
+                    <button onclick="compartirWhatsApp()" class="text-green-500 text-2xl"><i class="fa-brands fa-whatsapp"></i></button>
+                    <button onclick="copiarTextoSimple(document.getElementById('tOut').innerText)" class="text-blue-400 text-xl"><i class="fa-solid fa-copy"></i></button>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass-card p-5 border border-white/5">
+            <div class="flex justify-between items-center mb-3">
+                <span class="text-[9px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2">
+                    <i class="fa-solid fa-book text-blue-400"></i> <span id="ui-dict-title"></span>
+                </span>
+                <select id="searchLang" onchange="saveLangPref('searchLang')" class="bg-slate-800/50 text-[8px] font-bold p-1 px-2 rounded-md border border-white/10 text-blue-400 outline-none"></select>
+            </div>
+            <div class="flex gap-2 relative">
+                <div class="relative flex-1">
+                    <input type="text" id="searchInput" class="w-full bg-black/20 p-4 pr-10 rounded-2xl text-xs outline-none border border-white/5">
+                    <button onclick="borrarBusqueda()" class="absolute right-3 top-1/2 -translate-y-1/2 text-red-500/50"><i class="fa-solid fa-circle-xmark"></i></button>
+                </div>
+                <button onclick="buscarDefinicion()" class="w-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white"><i class="fa-solid fa-magnifying-glass"></i></button>
+            </div>
+            <div id="searchResult" class="hidden mt-3 space-y-2">
+                <div class="bg-black/40 p-4 rounded-2xl border border-white/5 text-[11px] font-bold italic text-center text-blue-300">
+                    Respuesta Encontrada Haz Clik En Google o Wikipedia
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="externo('google')" class="flex-1 py-2 bg-blue-600 rounded-xl text-[10px] font-black">Google</button>
+                    <button onclick="externo('wiki')" class="flex-1 py-2 bg-white text-black rounded-xl text-[10px] font-black">Wikipedia</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="pb-8">
+            <div class="flex gap-4 mb-3 px-1 border-b border-white/5">
+                <button onclick="cambiarPestana('hist')" id="tabH" class="pb-2 text-[10px] font-black uppercase tab-active"></button>
+                <button onclick="cambiarPestana('fav')" id="tabF" class="pb-2 text-[10px] font-black uppercase text-slate-500"></button>
+                <button onclick="limpiarTodo()" id="ui-clear-all" class="ml-auto text-[9px] text-red-500 font-bold uppercase"></button>
+            </div>
+            <div id="historialList" class="space-y-2"></div>
+        </div>
+    </main>
+
+    <div id="star-modal">
+        <div class="glass-card p-6 w-full max-w-xs space-y-4 border-t-4 border-yellow-500">
+            <h3 id="ui-star-title" class="text-xs font-black text-yellow-500 uppercase text-center"></h3>
+            <textarea id="starInput" class="w-full bg-slate-900/90 p-4 rounded-xl text-white outline-none border border-white/10 h-32 text-sm"></textarea>
+            <div class="flex gap-2">
+                <button onclick="cerrarEscrituraEstrella()" id="ui-star-close" class="flex-1 py-3 bg-slate-700 rounded-xl text-[10px] font-black uppercase"></button>
+                <button onclick="confirmarGuardadoEstrella()" id="ui-star-save" class="flex-1 py-3 bg-yellow-500 rounded-xl text-[10px] font-black uppercase text-black"></button>
+            </div>
+        </div>
+    </div>
+
+    <div id="editor-modal">
+        <div class="flex justify-between items-center p-4 bg-slate-900 border-b border-white/10">
+            <button onclick="cancelarEdicion()" class="text-white text-xl"><i class="fa-solid fa-xmark"></i></button>
+            <span class="text-xs font-black uppercase tracking-widest text-blue-400">Editor Flax</span>
+            <div class="w-6"></div>
+        </div>
+        <div class="flex-1 flex items-center justify-center bg-black overflow-hidden relative">
+            <img id="image-to-edit" style="max-width: 100%; display: block;">
+        </div>
+        <div class="p-4 bg-slate-900 flex flex-col gap-4">
+            <div class="flex justify-center gap-6 text-white text-2xl">
+                <button onclick="cropper.rotate(-90)"><i class="fa-solid fa-rotate-left"></i></button>
+                <button onclick="cropper.rotate(90)"><i class="fa-solid fa-rotate-right"></i></button>
+                <button onclick="cropper.setDragMode('crop')"><i class="fa-solid fa-crop-simple"></i></button>
+                <button onclick="cropper.setDragMode('move')"><i class="fa-solid fa-arrows-up-down-left-right"></i></button>
+            </div>
+            <button onclick="procesarImagen()" id="btnAnalizarImg" class="bg-blue-600 text-white font-black w-full py-4 rounded-xl uppercase text-sm tracking-widest">
+                ANALIZAR
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const uiLangs = {
+            "es": { name: "Español 🇪🇸", title: "TRADUCTOR", mentality: "MENTALIDAD", discover: "¿Qué vamos a descubrir hoy?", input: "Escribe un texto", translate: "TRADUCIR", web: "TRADUCTOR WEB", history: "Historial", favs: "Favoritos ★", clear: "Borrar Todo", analyzing: "ANALIZANDO...", welcome: "Bienvenido A Tu Herramienta De Traducción Digital Gratis", namePh: "Tu nombre aquí", btnStart: "COMENZAR", btnNext: "SIGUIENTE", search: "Buscar concepto...", dict: "Diccionario Global", resFound: "Respuesta Encontrada", ocean: "🌑 Océano", neon: "🧬 Neón", gold: "✨ Oro", emerald: "🌿 Verde", ruby: "🌹 Rojo", obsidian: "🌑 Negro", starTitle: "GUARDAR TEXTO O URL", starClose: "Cerrar", starSave: "Guardar", greetings: "¡Hola, ", 
+                   frases: ["La disciplina vence a la inteligencia.", "El esfuerzo constante rinde frutos.", "No te detengas hasta estar orgulloso.", "La sabiduría es el silencio del sabio.", "Enfócate en el progreso, no en la perfección.", "Cada paso cuenta en tu camino digital.", "El éxito es la suma de pequeños esfuerzos."] },
+            "en": { name: "Inglés 🇺🇸", title: "TRANSLATOR", mentality: "MENTALITY", discover: "What shall we discover today?", input: "Write text", translate: "TRANSLATE", web: "WEB TRANSLATOR", history: "History", favs: "Favorites ★", clear: "Clear All", analyzing: "ANALYZING...", welcome: "Welcome To Your Free Digital Translation Tool", namePh: "Your name here", btnStart: "START", btnNext: "NEXT", search: "Search concept...", dict: "Global Dictionary", resFound: "Result Found", ocean: "🌑 Ocean", neon: "🧬 Neon", gold: "✨ Gold", emerald: "🌿 Emerald", ruby: "🌹 Ruby", obsidian: "🌑 Obsidian", starTitle: "SAVE TEXT OR URL", starClose: "Close", starSave: "Save", greetings: "Hello, ", 
+                   frases: ["Discipline beats intelligence.", "Constant effort pays off.", "Don't stop until you're proud.", "Wisdom is the silence of the wise.", "Focus on progress, not perfection.", "Every step counts on your digital journey.", "Success is the sum of small efforts."] },
+            "pt": { name: "Portugués 🇧🇷", title: "TRADUTOR", mentality: "MENTALIDADE", discover: "O que vamos descobrir hoje?", input: "Escreva um texto", translate: "TRADUZIR", web: "TRADUTOR WEB", history: "Histórico", favs: "Favoritos ★", clear: "Limpar Tudo", analyzing: "ANALISANDO...", welcome: "Bem-vindo à Sua Ferramenta de Tradução Digital Gratuita", namePh: "Seu nome aqui", btnStart: "COMEÇAR", btnNext: "PRÓXIMO", search: "Buscar conceito...", dict: "Dicionário Global", resFound: "Resposta Encontrada", ocean: "🌑 Oceano", neon: "🧬 Neon", gold: "✨ Ouro", emerald: "🌿 Esmeralda", ruby: "🌹 Rubi", obsidian: "🌑 Obsidiana", starTitle: "SALVAR TEXTO OU URL", starClose: "Fechar", starSave: "Salvar", greetings: "Olá, ",
+                   frases: ["A disciplina vence a inteligência.", "Esforço constante traz resultados.", "Não pare até se orgulhar.", "A sabedoria é o silêncio do sábio.", "Foque no progresso, não na perfeição.", "Cada passo conta em sua jornada digital.", "O sucesso é a soma de pequenos esforços."] },
+            "zh": { name: "Chino 🇨🇳", title: "翻译器", mentality: "心态", discover: "今天我们要发现什么？", input: "输入文本", translate: "翻译", web: "网页翻译", history: "历史记录", favs: "收藏 ★", clear: "全部清除", analyzing: "正在分析...", welcome: "欢迎使用您的免费数字翻译工具", namePh: "您的名字", btnStart: "开始", btnNext: "下一步", search: "搜索概念...", dict: "全球词典", resFound: "找到结果", ocean: "🌑 海洋", neon: "🧬 霓虹", gold: "✨ 黄金", emerald: "🌿 翡翠", ruby: "🌹 红宝石", obsidian: "🌑 黑曜石", starTitle: "保存文本或 URL", starClose: "关闭", starSave: "保存", greetings: "你好，",
+                   frases: ["自律胜过聪明。", "不断的努力会有回报。", "直到你感到自豪才停止。", "智慧是智者的沉默。", "专注于进步，而不是完美。", "数字旅程中的每一步都很重要。", "成功是小努力的总和。"] },
+            "ja": { name: "Japonés 🇯🇵", title: "翻訳者", mentality: "メンタリティ", discover: "今日は何を発見しましょうか？", input: "テキストを入力", translate: "翻訳する", web: "ウェブ翻訳", history: "履歴", favs: "お気に入り ★", clear: "すべて削除", analyzing: "分析中...", welcome: "無料デジタル翻訳ツールへようこそ", namePh: "お名前", btnStart: "開始", btnNext: "次へ", search: "概念を検索...", dict: "グローバル辞書", resFound: "結果が見つかりました", ocean: "🌑 オーシャン", neon: "🧬 ネオン", gold: "✨ ゴールド", emerald: "🌿 エメラルド", ruby: "🌹 ルビー", obsidian: "🌑 オブシディアン", starTitle: "テキストまたはURLを保存", starClose: "閉じる", starSave: "保存", greetings: "こんにちは、",
+                   frases: ["規律は知性に勝る。", "絶え間ない努力は報われる。", "誇りに思うまで立ち止まらないで。", "知恵は賢者の沈黙である。", "完璧ではなく進歩に焦点を当てる。", "デジタルジャーニーのすべてのステップが重要です。", "成功は小さな努力の積み重ねです。"] },
+            "hi": { name: "Hindi 🇮🇳", title: "अनुवादक", mentality: "मानसिकता", discover: "आज हम क्या खोजेंगे?", input: "पाठ लिखें", translate: "अनुवाद करें", web: "वेब अनुवादक", history: "इतिहास", favs: "पसंदीदा ★", clear: "सभी साफ करें", analyzing: "विश्लेषण कर रहा है...", welcome: "आपके मुफ्त डिजिटल अनुवाद उपकरण में आपका स्वागत है", namePh: "आपका नाम यहाँ", btnStart: "शुरू करें", btnNext: "अगला", search: "अवधारणा खोजें...", dict: "वैश्विक शब्दकोश", resFound: "उत्तर मिल गया", ocean: "🌑 महासागर", neon: "🧬 नियॉन", gold: "✨ सोना", emerald: "🌿 पन्ना", ruby: "🌹 माणिक", obsidian: "🌑 ओब्सीдियन", starTitle: "पाठ या URL सहेजें", starClose: "बंद करें", starSave: "सहेजें", greetings: "नमस्ते, ",
+                   frases: ["अनुशासन बुद्धि को मात देता है।", "निरंतर प्रयास रंग लाता है।", "जब तक गर्व न हो, तब तक न रुकें।", "बुद्धिमत्ता बुद्धिमान का मौन है।", "पूर्णता पर नहीं, प्रगति पर ध्यान दें।", "आपकी डिजिटल यात्रा में हर कदम मायने रखता है।", "सफलता छोटे प्रयासों का योग है।"] },
+            "ar": { name: "Árabe 🇸🇦", title: "مترجم", mentality: "عقلية", discover: "ماذا سنكتشف اليوم؟", input: "اكتب نصاً", translate: "ترجم", web: "مترجم الويب", history: "السجل", favs: "المفضلة ★", clear: "مسح الكل", analyzing: "جاري التحليل...", welcome: "مرحباً بك في أداة الترجمة الرقمية المجانية", namePh: "اسمك هنا", btnStart: "ابدأ", btnNext: "التالي", search: "ابحث عن المفهوم...", dict: "قاموس عالمي", resFound: "تم العثور على الإجابة", ocean: "🌑 محيط", neon: "🧬 نيون", gold: "✨ ذهب", emerald: "🌿 زمرد", ruby: "🌹 ياقوت", obsidian: "🌑 أوبسيديان", starTitle: "حفظ نص أو رابط", starClose: "إغلاق", starSave: "حفظ", greetings: "مرحباً، ",
+                   frases: ["الانضباط يتفوق على الذكاء.", "الجهد المستمر يؤتي ثماره.", "لا تتوقف حتى تفخر بنفسك.", "الحكمة هي صمت الحكيم.", "ركز على التقدم وليس الكمال.", "كل خطوة مهمة في رحلتك الرقمية.", "النجاح هو مجموع الجهود الصغيرة."] },
+            "ru": { name: "Ruso 🇷🇺", title: "ПЕРЕВОДЧИК", mentality: "МЕНТАЛИТЕТ", discover: "Что мы откроем сегодня?", input: "Введите текст", translate: "ПЕРЕВЕСТИ", web: "ВЕБ-ПЕРЕВОДЧИК", history: "История", favs: "Избранное ★", clear: "Очистить всё", analyzing: "АНАЛИЗ...", welcome: "Добро пожаловать в ваш бесплатный цифровой переводчик", namePh: "Ваше имя", btnStart: "НАЧАТЬ", btnNext: "ДАЛЕЕ", search: "Поиск понятия...", dict: "Глобальный словарь", resFound: "Ответ найден", ocean: "🌑 Океан", neon: "🧬 Неон", gold: "✨ Золото", emerald: "🌿 Изумруд", ruby: "🌹 Рубин", obsidian: "🌑 Обсидиан", starTitle: "СОХРАНИТЬ ТЕКСТ ИЛИ URL", starClose: "Закрыть", starSave: "Сохранить", greetings: "Привет, ",
+                   frases: ["Дисциплина бьет интеллект.", "Постоянные усилия окупаются.", "Не останавливайся, пока не будешь гордиться.", "Мудрость — это молчание мудреца.", "Сосредоточьтесь на прогрессе, а не на совершенстве.", "Каждый шаг важен на вашем цифровом пути.", "Успех — это сумма малых усилий."] },
+            "de": { name: "Alemán 🇩🇪", title: "ÜBERSETZER", mentality: "MENTALITÄT", discover: "Was werden wir heute entdecken?", input: "Text eingeben", translate: "ÜBERSETZEN", web: "WEB-ÜBERSETZER", history: "Verlauf", favs: "Favoriten ★", clear: "Alles löschen", analyzing: "ANALYSE...", welcome: "Willkommen zu Ihrem kostenlosen digitalen Übersetzungstool", namePh: "Ihr Name hier", btnStart: "STARTEN", btnNext: "WEITER", search: "Konzept suchen...", dict: "Globales Wörterbuch", resFound: "Antwort gefunden", ocean: "🌑 Ozean", neon: "🧬 Neon", gold: "✨ Gold", emerald: "🌿 Smaragd", ruby: "🌹 Rubin", obsidian: "🌑 Obsidian", starTitle: "TEXT ODER URL SPEICHERN", starClose: "Schließen", starSave: "Speichern", greetings: "Hallo, ",
+                   frases: ["Disziplin schlägt Intelligenz.", "Stetige Anstrengung zahlt sich aus.", "Hör erst auf, wenn du stolz bist.", "Weisheit ist das Schweigen des Weisen.", "Konzentriere dich auf Fortschritt, nicht auf Perfektion.", "Jeder Schritt zählt auf deiner digitalen Reise.", "Erfolg ist die Summe kleiner Anstrengungen."] },
+            "ko": { name: "Coreano 🇰🇷", title: "번역기", mentality: "정신", discover: "오늘은 무엇을 발견할까요?", input: "텍스트 입력", translate: "번역하기", web: "웹 번역기", history: "기록", favs: "즐겨찾기 ★", clear: "모두 삭제", analyzing: "분석 중...", welcome: "무료 디지털 번역 도구에 오신 것을 환영합니다", namePh: "이름을 입력하세요", btnStart: "시작", btnNext: "다음", search: "개념 검색...", dict: "글로벌 사전", resFound: "결과를 찾았습니다", ocean: "🌑 오션", neon: "🧬 네온", gold: "✨ 골드", emerald: "🌿 에메랄드", ruby: "🌹 루비", obsidian: "🌑 옵시디언", starTitle: "텍스트 또는 URL 저장", starClose: "닫기", starSave: "저장", greetings: "안녕하세요, ",
+                   frases: ["절제는 지능을 이깁니다.", "지속적인 노력은 결실을 맺습니다.", "자랑스러울 때까지 멈추지 마세요.", "지혜는 현자의 침묵입니다.", "완벽함이 아닌 발전에 집중하세요.", "디지털 여정의 모든 단계가 중요합니다.", "성공은 작은 노력의 합계입니다."] },
+            "bn": { name: "Bengalí 🇧🇩", title: "অনুবাদক", mentality: "মানসিকতা", discover: "আজ আমরা কি আবিষ্কার করব?", input: "টেক্সট লিখুন", translate: "অনুবাদ করুন", web: "ওয়েব অনুবাদক", history: "ইতিহাস", favs: "প্রিয় ★", clear: "সব মুছুন", analyzing: "বিশ্লেষণ করা হচ্ছে...", welcome: "আপনার বিনামূল্যে ডিজিটাল অনুবাদ টুলে স্বাগতম", namePh: "আপনার নাম এখানে", btnStart: "শুরু করুন", btnNext: "পরবর্তী", search: "ধারণা খুঁজুন...", dict: "গ্লোবাল ডিকশনারি", resFound: "উত্তর পাওয়া গেছে", ocean: "🌑 মহাসাগর", neon: "🧬 নিয়ন", gold: "✨ সোনা", emerald: "🌿 পান্না", ruby: "🌹 রুবি", obsidian: "🌑 অবসিডিয়ান", starTitle: "টেক্সট বা URL সংরক্ষণ করুন", starClose: "বন্ধ করুন", starSave: "সংরক্ষণ করুন", greetings: "হ্যালো, ",
+                   frases: ["শৃঙ্খলা বুদ্ধিকে হারায়।", "অবিরাম প্রচেষ্টা ফল দেয়।", "গর্বিত না হওয়া পর্যন্ত থামবেন না।", "প্রজ্ঞা হলো জ্ঞানীর নীরবতা।", "নিখুঁত নয়, অগ্রগতির দিকে মনোনিবেশ করুন।", "আপনার ডিজিটাল যাত্রায় প্রতিটি পদক্ষেপ গুরুত্বপূর্ণ।", "সাফল্য হলো ছোট প্রচেষ্টার সমষ্টি।"] },
+            "fr": { name: "Francés 🇫🇷", title: "TRADUCTEUR", mentality: "MENTALITÉ", discover: "Que allons-nous découvrir aujourd'hui ?", input: "Écrire un texte", translate: "TRADUIRE", web: "TRADUCTEUR WEB", history: "Historique", favs: "Favoris ★", clear: "Tout effacer", analyzing: "ANALYSE...", welcome: "Bienvenue sur votre outil de traduction numérique gratuit", namePh: "Votre nom ici", btnStart: "COMMENCER", btnNext: "SUIVANT", search: "Chercher un concept...", dict: "Dictionnaire Global", resFound: "Réponse trouvée", ocean: "🌑 Océan", neon: "🧬 Néon", gold: "✨ Or", emerald: "🌿 Émeraude", ruby: "🌹 Rubis", obsidian: "🌑 Obsidienne", starTitle: "ENREGISTRER TEXTE OU URL", starClose: "Fermer", starSave: "Enregistrer", greetings: "Bonjour, ",
+                   frases: ["La discipline bat l'intelligence.", "L'effort constant porte ses fruits.", "Ne t'arrête pas avant d'être fier.", "La sagesse es le silence du sage.", "Concentrez-vous sur le progrès, pas la perfection.", "Chaque pas compte dans votre voyage numérique.", "Le succès est la somme de petits efforts."] },
+            "he": { name: "Hebreo 🇮🇱", title: "מתרגם", mentality: "מנטליות", discover: "מה נגלה היום?", input: "כתוב טקסט", translate: "תרגם", web: "מתרגם אתרים", history: "היסטוריה", favs: "מועדפים ★", clear: "מחק הכל", analyzing: "מנתח...", welcome: "ברוכים הבאים לכלי התרגום הדיגיטלי החינמי שלך", namePh: "השם שלך כאן", btnStart: "התחל", btnNext: "הבא", search: "חפש מושג...", dict: "מילון עולמי", resFound: "נמצאה תשובה", ocean: "🌑 אוקיינוס", neon: "🧬 ניאון", gold: "✨ זהב", emerald: "🌿 אמרלד", ruby: "🌹 רובי", obsidian: "🌑 אובסידיאן", starTitle: "שמור טקסט או כתובת", starClose: "סגור", starSave: "שמור", greetings: "שלום, ",
+                   frases: ["משמעת מנצחת אינטליגנציה.", "מאמץ מתמיד משתלם.", "אל תפסיק עד שתהיה גאה.", "חכמה היא שתיקת החכם.", "התמקד בהתקדמות, לא בשלמות.", "כל צעד נחשב במסע הדיגיטלי שלך.", "הצלחה היא סכום של מאמצים קטנים."] },
+            "it": { name: "Italiano 🇮🇹", title: "TRADUTTORE", mentality: "MENTALITÀ", discover: "Cosa scopriremo oggi?", input: "Scrivi un testo", translate: "TRADUCI", web: "TRADUTTORE WEB", history: "Cronologia", favs: "Preferiti ★", clear: "Cancella Tutto", analyzing: "ANALIZZANDO...", welcome: "Benvenuto nel tuo strumento di traduzione digitale gratuito", namePh: "Il tuo nome qui", btnStart: "INIZIA", btnNext: "AVANTI", search: "Cerca concetto...", dict: "Dizionario Globale", resFound: "Risposta Trovata", ocean: "🌑 Oceano", neon: "🧬 Neon", gold: "✨ Oro", emerald: "🌿 Smeraldo", ruby: "🌹 Rubino", obsidian: "🌑 Ossidiana", starTitle: "SALVA TESTO O URL", starClose: "Chiudi", starSave: "Salva", greetings: "Ciao, ",
+                   frases: ["La disciplina batte l'intelligenza.", "Lo sforzo costante paga.", "Non fermarti finché non sei orgoglioso.", "La saggezza è il silenzio del saggio.", "Concentrati sul progresso, non sulla perfezione.", "Ogni passo conta nel tuo viaggio digitale.", "Il successo è la somma di piccoli sforzi."] },
+            "tr": { name: "Türkçe 🇹🇷", title: "ÇEVİRMEN", mentality: "ZİHNİYET", discover: "Bugün ne keşfedeceğiz?", input: "Metin yazın", translate: "ÇEVİR", web: "WEB ÇEVİRMENİ", history: "Geçmiş", favs: "Favoriler ★", clear: "Hepsini Sil", analyzing: "ANALİZ EDİLİYOR...", welcome: "Ücretsiz Dijital Çeviri Aracınıza Hoş Geldiniz", namePh: "Adınız buraya", btnStart: "BAŞLAT", btnNext: "İLERİ", search: "Kavram ara...", dict: "Küresel Sözlük", resFound: "Cevap Bulundu", ocean: "🌑 Okyanus", neon: "🧬 Neon", gold: "✨ Altın", emerald: "🌿 Zümrüt", ruby: "🌹 Yakut", obsidian: "🌑 Obsidyen", starTitle: "METİN VEYA URL KAYDET", starClose: "Kapat", starSave: "Kaydet", greetings: "Merhaba, ",
+                   frases: ["Disiplin zekayı yener.", "Sürekli çaba meyvesini verir.", "Gurur duyana kadar durma.", "Bilgelik bilgenin sessizliğidir.", "Mükemmelliğe değil, ilerlemeye odaklan.", "Dijital yolculuğunuzda her adım önemlidir.", "Başarı, küçük çabaların toplamıdır."] },
+            "pl": { name: "Polski 🇵🇱", title: "TŁUMACZ", mentality: "MENTALNOŚĆ", discover: "Co dzisiaj odkryjemy?", input: "Wpisz tekst", translate: "TŁUMACZ", web: "TŁUMACZ WEB", history: "Historia", favs: "Ulubione ★", clear: "Usuń wszystko", analyzing: "ANALIZA...", welcome: "Witaj w darmowym cyfrowym narzędziu do tłumaczenia", namePh: "Twoje imię", btnStart: "START", btnNext: "DALEJ", search: "Szukaj pojęcia...", dict: "Globalny Słownik", resFound: "Znaleziono odpowiedź", ocean: "🌑 Ocean", neon: "🧬 Neon", gold: "✨ Złoto", emerald: "🌿 Szmaragd", ruby: "🌹 Rubin", obsidian: "🌑 Obsydian", starTitle: "ZAPISZ TEKST LUB URL", starClose: "Zamknij", starSave: "Zapisz", greetings: "Cześć, ",
+                   frases: ["Dyscyplina bije inteligencję.", "Stały wysiłek popłaca.", "Nie przestawaj, dopóki nie będziesz dumny.", "Mądrość to milczenie mędrca.", "Skup się na postępie, a nie na perfekcji.", "Każdy krok liczy się w Twojej cyfrowej podróży.", "Sukces to suma małych wysiłków."] },
+            "vi": { name: "Tiếng Việt 🇻🇳", title: "MÁY DỊCH", mentality: "TƯ DUY", discover: "Hôm nay chúng ta sẽ khám phá gì?", input: "Nhập văn bản", translate: "DỊCH", web: "DỊCH WEB", history: "Lịch sử", favs: "Yêu thích ★", clear: "Xóa tất cả", analyzing: "ĐANG PHÂN TÍCH...", welcome: "Chào mừng bạn đến với công cụ dịch thuật kỹ thuật số miễn phí", namePh: "Tên của bạn", btnStart: "BẮT ĐẦU", btnNext: "TIẾP THEO", search: "Tìm kiếm khái niệm...", dict: "Từ điển Toàn cầu", resFound: "Đã tìm thấy câu trả lời", ocean: "🌑 Đại dương", neon: "🧬 Neon", gold: "✨ Vàng", emerald: "🌿 Ngọc lục bảo", ruby: "🌹 Hồng ngọc", obsidian: "🌑 Đá vỏ chai", starTitle: "LƯU VĂN BẢN HOẶC URL", starClose: "Đóng", starSave: "Lưu", greetings: "Xin chào, ",
+                   frases: ["Kỷ luật đánh bại sự thông minh.", "Nỗ lực không ngừng sẽ có kết quả.", "Đừng dừng lại cho đến khi bạn tự hào.", "Trí tuệ là sự im lặng của người hiền.", "Tập trung vào sự tiến bộ, không phải sự hoàn hảo.", "Mọi bước đi đều quan trọng trong hành trình kỹ thuật số.", "Thành công là tổng hợp của những nỗ lực nhỏ."] },
+            "id": { name: "Indonesia 🇮🇩", title: "PENERJEMAH", mentality: "MENTALITAS", discover: "Apa yang akan kita temukan hari ini?", input: "Tulis teks", translate: "TERJEMAHKAN", web: "PENERJEMAH WEB", history: "Riwayat", favs: "Favorit ★", clear: "Hapus Semua", analyzing: "MENGANALISIS...", welcome: "Selamat Datang di Alat Terjemahan Digital Gratis Anda", namePh: "Nama Anda di sini", btnStart: "MULAI", btnNext: "BERIKUTNYA", search: "Cari konsep...", dict: "Kamus Global", resFound: "Jawaban Ditemukan", ocean: "🌑 Lautan", neon: "🧬 Neon", gold: "✨ Emas", emerald: "🌿 Zamrud", ruby: "🌹 Rubi", obsidian: "🌑 Obsidian", starTitle: "SIMPAN TEKS ATAU URL", starClose: "Tutup", starSave: "Simpan", greetings: "Halo, ",
+                   frases: ["Disiplin mengalahkan kecerdasan.", "Usaha terus-menerus membuahkan hasil.", "Jangan berhenti sampai Anda bangga.", "Kebijaksanaan es diamnya orang bijak.", "Fokus pada kemajuan, bukan kesempurnaan.", "Setiap langkah berarti dalam perjalanan digital Anda.", "Kesuksesan adalah jumlah dari upaya kecil."] },
+            "sv": { name: "Svenska 🇸🇪", title: "ÖVERSÄTTARE", mentality: "MENTALITET", discover: "Vad ska vi upptäcka idag?", input: "Skriv text", translate: "ÖVERSÄTT", web: "WEBBÖVERSÄTTARE", history: "Historik", favs: "Favoriter ★", clear: "Rensa allt", analyzing: "ANALYSERAR...", welcome: "Välkommen till ditt gratis digitala översättningsverktyg", namePh: "Ditt namn här", btnStart: "STARTA", btnNext: "NÄSTA", search: "Sök begrepp...", dict: "Global Ordbok", resFound: "Svar hittat", ocean: "🌑 Hav", neon: "🧬 Neon", gold: "✨ Guld", emerald: "🌿 Smaragd", ruby: "🌹 Rubin", obsidian: "🌑 Obsidian", starTitle: "SPARA TEXT ELLER URL", starClose: "Stäng", starSave: "Spara", greetings: "Hej, ",
+                   frases: ["Disciplin slår intelligens.", "Ständig ansträngning lönar sig.", "Sluta inte förrän du är stolt.", "Visdom är den vises tystnad.", "Fokusera på framsteg, inte perfektion.", "Varje steg räknas på din digitala resa.", "Framgång är summan av små ansträngningar."] },
+            "nl": { name: "Nederlands 🇳🇱", title: "VERTALER", mentality: "MENTALITEIT", discover: "Wat gaan we vandaag ontdekken?", input: "Schrijf tekst", translate: "VERTALEN", web: "WEBVERTALER", history: "Geschiedenis", favs: "Favorieten ★", clear: "Alles wissen", analyzing: "ANALYSEREN...", welcome: "Welkom bij uw gratis digitale vertaaltool", namePh: "Uw naam hier", btnStart: "START", btnNext: "VOLGENDE", search: "Zoek concept...", dict: "Wereldwijd Woordenboek", resFound: "Antwoord gevonden", ocean: "🌑 Oceaan", neon: "🧬 Neon", gold: "✨ Goud", emerald: "🌿 Smaragd", ruby: "🌹 Robijn", obsidian: "🌑 Obsidiaan", starTitle: "TEKST OF URL OPSLAAN", starClose: "Sluiten", starSave: "Spara", greetings: "Hallo, ",
+                   frases: ["Discipline wint van intelligentie.", "Constante inspanning loont.", "Stop niet totdat je trots bent.", "Wijsheid is de stilte van de wijze.", "Focus op vooruitgang, niet op perfectie.", "Elke stap telt in je digitale reis.", "Succes is de som van kleine inspanningen."] }
+        };
+
+        const megaLangs = { "af": "Afrikáans 🇿🇦", "sq": "Albanés 🇦🇱", "ar": "Árabe 🇸🇦", "bn": "Bengalí 🇧🇩", "zh": "Chino 🇨🇳", "hr": "Croata 🇭🇷", "cs": "Checo 🇨🇿", "da": "Danés 🇩🇰", "nl": "Holandés 🇳🇱", "en": "Inglés 🇺🇸", "fi": "Finlandés 🇫🇮", "fr": "Francés 🇫🇷", "de": "Alemán 🇩🇪", "el": "Griego 🇬🇷", "he": "Hebreo 🇮🇱", "hi": "Hindi 🇮🇳", "hu": "Húngaro 🇺🇸", "id": "Indonesio 🇮🇩", "it": "Italiano 🇮🇹", "ja": "Japonés 🇯🇵", "ko": "Coreano 🇰🇷", "no": "Noruego 🇳🇴", "pl": "Polaco 🇵🇱", "pt": "Portugués 🇧🇷", "ro": "Rumano 🇷🇴", "ru": "Ruso 🇷🇺", "es": "Español 🇪🇸", "sv": "Sueco 🇸🇪", "th": "Tailandés 🇹🇭", "tr": "Turco 🇹🇷", "uk": "Ucraniano 🇺🇦", "vi": "Vietnamita 🇻🇳" };
+        
+        let cropper; 
+        let pestanaActual = 'hist';
+        let recognition;
+        let selectedUILang = 'es';
+
+        window.onload = () => {
+            renderLanguageGrid();
+            verificarBienvenida();
+            populateSelects();
+            mostrarHistorial();
+            loadLangPrefs();
+            setupSpeechRecognition();
+        };
+
+        function renderLanguageGrid() {
+            const container = document.getElementById('langGridContainer');
+            container.innerHTML = '';
+            Object.keys(uiLangs).forEach(code => {
+                const btn = document.createElement('button');
+                btn.className = `lang-btn ${selectedUILang === code ? 'selected' : ''}`;
+                btn.id = `btn-lang-${code}`;
+                btn.innerText = uiLangs[code].name;
+                btn.onclick = () => selectUILanguage(code);
+                container.appendChild(btn);
+            });
+        }
+
+        function selectUILanguage(code) {
+            document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('selected'));
+            document.getElementById(`btn-lang-${code}`).classList.add('selected');
+            selectedUILang = code;
+            changeUILanguage(code);
+        }
+
+        function changeUILanguage(langCode) {
+            const lang = uiLangs[langCode];
+            if(!lang) return;
+            document.getElementById('modal-title-left').innerText = lang.title;
+            document.getElementById('ui-title-main').innerText = lang.title;
+            document.getElementById('ui-mentality-text').innerText = lang.mentality;
+            document.getElementById('ui-discover').innerText = lang.discover;
+            document.getElementById('tIn').placeholder = lang.input;
+            document.getElementById('btn-translate-main').innerText = lang.translate;
+            document.getElementById('ui-web-trans').innerHTML = `<i class="fa-solid fa-earth-americas"></i> ${lang.web}`;
+            document.getElementById('tabH').innerText = lang.history;
+            document.getElementById('tabF').innerText = lang.favs;
+            document.getElementById('ui-clear-all').innerText = lang.clear;
+            document.getElementById('ui-analyzing').innerText = lang.analyzing;
+            document.getElementById('welcomeMsg').innerText = lang.welcome;
+            document.getElementById('userNameInput').placeholder = lang.namePh;
+            document.getElementById('btnStart').innerText = lang.btnStart;
+            document.getElementById('btnNext').innerText = lang.btnNext;
+            document.getElementById('searchInput').placeholder = lang.search;
+            document.getElementById('ui-dict-title').innerText = lang.dict;
+            document.getElementById('opt-ocean').innerText = lang.ocean;
+            document.getElementById('opt-neon').innerText = lang.neon;
+            document.getElementById('opt-gold').innerText = lang.gold;
+            document.getElementById('opt-emerald').innerText = lang.emerald;
+            document.getElementById('opt-ruby').innerText = lang.ruby;
+            document.getElementById('opt-obsidian').innerText = lang.obsidian;
+            document.getElementById('ui-star-title').innerText = lang.starTitle;
+            document.getElementById('ui-star-close').innerText = lang.starClose;
+            document.getElementById('ui-star-save').innerText = lang.starSave;
+            localStorage.setItem('flax_ui_lang', langCode);
+            rotarFrase();
+            const user = localStorage.getItem('flax_user');
+            if(user) aplicarUser(user);
+        }
+
+        function goToStep2() {
+            document.getElementById('step1').classList.add('hidden');
+            document.getElementById('step2').classList.remove('hidden');
+        }
+
+        function rotarFrase() {
+            const lang = uiLangs[selectedUILang] || uiLangs['es'];
+            let index = parseInt(localStorage.getItem('flax_phrase_idx') || "0");
+            if(index >= lang.frases.length) index = 0;
+            document.getElementById('phraseMain').innerText = `"${lang.frases[index]}"`;
+            localStorage.setItem('flax_phrase_idx', (index + 1) % lang.frases.length);
+        }
+
+        function aplicarUser(n) {
+            const lang = uiLangs[selectedUILang] || uiLangs['es'];
+            document.getElementById('userHeaderName').innerText = n;
+            document.getElementById('userNameDisplay').innerText = lang.greetings + n + "!";
+        }
+
+        function verificarBienvenida() {
+            const user = localStorage.getItem('flax_user');
+            const savedLang = localStorage.getItem('flax_ui_lang');
+            if (!user) {
+                document.getElementById('welcome-modal').style.display = 'flex';
+                if(savedLang) {
+                    selectedUILang = savedLang;
+                    changeUILanguage(savedLang);
+                    renderLanguageGrid();
+                } else { changeUILanguage('es'); }
+            } else {
+                selectedUILang = savedLang || 'es';
+                changeUILanguage(selectedUILang);
+                aplicarUser(user);
+            }
+        }
+
+        function guardarUsuario() {
+            const name = document.getElementById('userNameInput').value.trim();
+            if (name) { 
+                localStorage.setItem('flax_user', name); 
+                document.getElementById('welcome-modal').style.display = 'none'; 
+                aplicarUser(name); 
+            }
+        }
+
+        async function traducir() {
+            const text = document.getElementById('tIn').value.trim();
+            if(!text) return;
+            document.getElementById('tOut').innerText = "...";
+            try {
+                const sl = document.getElementById('l1').value;
+                const tl = document.getElementById('l2').value;
+                const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`);
+                const data = await res.json();
+                const result = data[0].map(x => x[0]).join('');
+                document.getElementById('tOut').innerText = result;
+                guardarEnHistorial(text, "Traducción", sl, tl);
+            } catch(e) { document.getElementById('tOut').innerText = "Error"; }
+        }
+
+        function hablarNormal(texto, idioma) {
+            if (!texto || texto === "...") return;
+            window.speechSynthesis.cancel();
+            const mensaje = new SpeechSynthesisUtterance(texto);
+            mensaje.lang = idioma;
+            window.speechSynthesis.speak(mensaje);
+        }
+
+        function hablarTextoTraductor() {
+            const t = document.getElementById('tOut').innerText;
+            const lang = document.getElementById('l2').value;
+            hablarNormal(t, lang);
+        }
+
+        function populateSelects() {
+            ['l1', 'l2', 'searchLang'].forEach(id => {
+                const sel = document.getElementById(id);
+                sel.innerHTML = (id === 'l1') ? `<option value="auto">DETECTOR 🌐</option>` : '';
+                Object.entries(megaLangs).forEach(([code, name]) => {
+                    sel.innerHTML += `<option value="${code}">${name}</option>`;
+                });
+            });
+        }
+
+        function saveLangPref(id) { localStorage.setItem('flax_pref_' + id, document.getElementById(id).value); }
+        function loadLangPrefs() {
+            ['l1', 'l2', 'searchLang'].forEach(id => {
+                const val = localStorage.getItem('flax_pref_' + id);
+                if (val) document.getElementById(id).value = val;
+                else if (id === 'l2') document.getElementById(id).value = 'en';
+                else if (id === 'searchLang') document.getElementById(id).value = 'es';
+            });
+        }
+
+        function setupSpeechRecognition() {
+            if ('webkitSpeechRecognition' in window) {
+                recognition = new webkitSpeechRecognition();
+                recognition.onstart = () => document.getElementById('micBtn').classList.add('mic-active');
+                recognition.onresult = (e) => { document.getElementById('tIn').value = e.results[0][0].transcript; traducir(); };
+                recognition.onend = () => document.getElementById('micBtn').classList.remove('mic-active');
+            }
+        }
+
+        function toggleMicrofono() { if(recognition) recognition.start(); }
+        function buscarDefinicion() { 
+            const q = document.getElementById('searchInput').value.trim();
+            if(q) { 
+                document.getElementById('searchResult').classList.remove('hidden'); 
+                guardarEnHistorial(q, "Diccionario", "es", "es");
+            }
+        }
+        function externo(s) {
+            const q = document.getElementById('searchInput').value;
+            window.open(s === 'google' ? `https://www.google.com/search?q=${q}` : `https://es.wikipedia.org/wiki/${q}`);
+        }
+        function abrirTraductorWeb() { window.open(`https://translate.google.com/?sl=auto&tl=${document.getElementById('l2').value}&op=websites`, '_blank'); }
+        function abrirEscrituraEstrella() { document.getElementById('star-modal').style.display = 'flex'; }
+        function cerrarEscrituraEstrella() { document.getElementById('star-modal').style.display = 'none'; }
+        
+        function confirmarGuardadoEstrella() {
+            const val = document.getElementById('starInput').value.trim();
+            if(val) { 
+                guardarFav(val, document.getElementById('l1').value, document.getElementById('l2').value); 
+                cerrarEscrituraEstrella(); 
+            }
+        }
+        
+        function guardarFavoritoRes() {
+            const val = document.getElementById('tOut').innerText;
+            if(val !== "...") { 
+                guardarFav(val, document.getElementById('l1').value, document.getElementById('l2').value); 
+            }
+        }
+
+        function guardarFav(val, sl, tl) {
+            let f = JSON.parse(localStorage.getItem('flax_favs') || "[]");
+            f.unshift({ id: Date.now(), orig: val, tipo: 'Favorito', sl, tl });
+            localStorage.setItem('flax_favs', JSON.stringify(f));
+            if(pestanaActual === 'fav') mostrarHistorial();
+        }
+
+        function guardarEnHistorial(orig, tipo, sl, tl) {
+            let h = JSON.parse(localStorage.getItem('flax_hist') || "[]");
+            h.unshift({ id: Date.now(), orig, tipo, sl, tl });
+            localStorage.setItem('flax_hist', JSON.stringify(h.slice(0, 30)));
+            if(pestanaActual === 'hist') mostrarHistorial();
+        }
+
+        function mostrarHistorial() {
+            const list = document.getElementById('historialList');
+            const data = (pestanaActual === 'hist') ? JSON.parse(localStorage.getItem('flax_hist') || "[]") : JSON.parse(localStorage.getItem('flax_favs') || "[]");
+            list.innerHTML = data.map(i => `
+                <div class="glass-card p-4 flex justify-between items-center mb-2">
+                    <div class="truncate flex-1" onclick="restaurarTexto('${i.orig}', '${i.sl}', '${i.tl}')">
+                        <p class="text-[7px] font-black text-blue-500 uppercase">${i.tipo}</p>
+                        <p class="text-sm font-bold truncate text-white">${i.orig}</p>
+                    </div>
+                    <div class="flex gap-3 ml-2">
+                        <button onclick="copiarTextoSimple('${i.orig}')" class="text-blue-400 text-xs"><i class="fa-solid fa-copy"></i></button>
+                        <button onclick="borrarItem(${i.id})" class="text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </div>
+            `).join('') || '<p class="text-center text-slate-500 py-6 text-[10px]">Vacio</p>';
+        }
+
+        function restaurarTexto(texto, sl, tl) {
+            document.getElementById('tIn').value = texto;
+            if(sl) document.getElementById('l1').value = sl;
+            if(tl) document.getElementById('l2').value = tl;
+            window.scrollTo({ top: 100, behavior: 'smooth' });
+            traducir();
+        }
+
+        function borrarItem(id) {
+            const key = (pestanaActual === 'hist') ? 'flax_hist' : 'flax_favs';
+            let data = JSON.parse(localStorage.getItem(key) || "[]");
+            data = data.filter(item => item.id !== id);
+            localStorage.setItem(key, JSON.stringify(data));
+            mostrarHistorial();
+        }
+
+        function copiarTextoSimple(txt) {
+            navigator.clipboard.writeText(txt);
+        }
+
+        document.getElementById('fileIn').onchange = (e) => {
+            const file = e.target.files[0]; if(!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                document.getElementById('image-to-edit').src = ev.target.result;
+                document.getElementById('editor-modal').style.display = 'flex';
+                if (cropper) cropper.destroy();
+                cropper = new Cropper(document.getElementById('image-to-edit'), { viewMode: 1, dragMode: 'crop' });
+            };
+            reader.readAsDataURL(file);
+        };
+
+        async function procesarImagen() {
+            document.getElementById('editor-modal').style.display = 'none';
+            document.getElementById('scan-loader').style.display = 'flex';
+            const canvas = cropper.getCroppedCanvas();
+            const { data: { text } } = await Tesseract.recognize(canvas, 'spa+eng');
+            document.getElementById('tIn').value = text.trim();
+            document.getElementById('scan-loader').style.display = 'none';
+            traducir();
+        }
+
+        function borrarTextoTraductor() { document.getElementById('tIn').value = ""; document.getElementById('tOut').innerText = "..."; }
+        function borrarBusqueda() { document.getElementById('searchInput').value = ""; document.getElementById('searchResult').classList.add('hidden'); }
+        function intercambiarIdiomas() { 
+            const a = document.getElementById('l1').value; const b = document.getElementById('l2').value; 
+            if(a !== 'auto') { document.getElementById('l1').value = b; document.getElementById('l2').value = a; }
+        }
+        function cambiarPestana(p) { 
+            pestanaActual = p; 
+            document.getElementById('tabH').className = `pb-2 text-[10px] font-black uppercase ${p==='hist'?'tab-active':'text-slate-500'}`;
+            document.getElementById('tabF').className = `pb-2 text-[10px] font-black uppercase ${p==='fav'?'tab-active':'text-slate-500'}`;
+            mostrarHistorial(); 
+        }
+        function limpiarTodo() { localStorage.removeItem(pestanaActual==='hist'?'flax_hist':'flax_favs'); mostrarHistorial(); }
+        function changeTheme() { document.body.className = "theme-" + document.getElementById('themeSelect').value; }
+        function cancelarEdicion() { document.getElementById('editor-modal').style.display = 'none'; }
+        function compartirWhatsApp() { const t = document.getElementById('tOut').innerText; if(t !== "...") window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(t)}`); }
+    </script>
+</body>
+</html>
